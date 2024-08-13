@@ -3,6 +3,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 HOUSE_PRICE_PATH = "A2_Data/House_Price.csv"
+FIGURE_SAVE_PATH = "figures/figure"
+
+def fileName(name:str) -> str:
+    return FIGURE_SAVE_PATH + "_" + name + ".png"
+
 
 # strategy decides where on the x axis the bins will be (like wat range)
 # strategy = quantile, kmeans (in 1d, with n_bins centroids)
@@ -20,7 +25,8 @@ def printInfo():
     plt.xlabel('Sale Price ($)')
     plt.ylabel('Frequency')
     plt.grid(True)
-    plt.show()
+    #plt.show()
+    plt.savefig(fileName("histogram"))
 
     # Correlation Matrix Heatmap
     plt.figure(figsize=(15, 10))
@@ -28,7 +34,8 @@ def printInfo():
     corr_matrix = numeric_data.corr()
     sns.heatmap(corr_matrix, annot=False, cmap='coolwarm', linewidths=0.5)
     plt.title('Correlation Matrix of All Features')
-    plt.show()
+    #plt.show()
+    plt.savefig(fileName("correlation_matrix"))
 
     # Scatter plot of GrLivArea vs. SalePrice
     plt.figure(figsize=(10, 6))
@@ -37,7 +44,8 @@ def printInfo():
     plt.xlabel('Above Grade Living Area (Square Feet)')
     plt.ylabel('Sale Price ($)')
     plt.grid(True)
-    plt.show()
+    #plt.show()
+    plt.savefig(fileName("scatter_plot"))
 
     # Box plot of Neighborhood vs. SalePrice
     plt.figure(figsize=(15, 10))
@@ -47,7 +55,8 @@ def printInfo():
     plt.ylabel('Sale Price ($)')
     plt.xticks(rotation=90)
     plt.grid(True)
-    plt.show()
+    #plt.show()
+    plt.savefig(fileName("box_plot"))
 
     # Year Built vs. SalePrice
     plt.figure(figsize=(10, 6))
@@ -56,7 +65,8 @@ def printInfo():
     plt.xlabel('Year Built')
     plt.ylabel('Sale Price ($)')
     plt.grid(True)
-    plt.show()
+    #plt.show()
+    plt.savefig(fileName("line_plot"))
 
 
 
