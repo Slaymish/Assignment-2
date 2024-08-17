@@ -2,10 +2,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import skew, kurtosis
-from scipy.cluster.hierarchy import dendrogram, linkage
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 import numpy as np
 
-HOUSE_PRICE_PATH = "A2_Data/House_Price.csv"
+HOUSE_PRICE_PATH = "A2_Data/unprocessed/House_Price.csv"
 FIGURE_SAVE_PATH = "figures/figure"
 
 def fileName(name:str) -> str:
@@ -16,20 +16,20 @@ def fileName(name:str) -> str:
 # strategy = quantile, kmeans (in 1d, with n_bins centroids)
 # KBinsDiscretizer(n_bin=7, encode='ordinal', strategy='quantile')
 
-def printInfo(data:pd.DataFrame):
-    print("Num of Features: " + str(data.columns.size))
+def summaryStats(data:pd.DataFrame):
+    numFeatures = data.columns.size
+    numInstances = data.shape[0]
+    numCategorical = data.select_dtypes(include=['object', 'category']).shape[1]
+    numNumerical = data.select_dtypes(include=['float64', 'int64']).shape[1]
 
-    maxCount = 0
-
-    for column in list(data.columns):
-        if data[column].size > maxCount: # count rows (get max row count)
-            maxCount = data[column].size
-
-
-    print("Num of Instances: " + str(maxCount))
+    return pd.DataFrame({
+        'Metrics': ['Number of Features', 'Number of Instances', 'Number of Categorical Features', 'Number of Numerical Features'],
+        'Count': [numFeatures, numInstances, numCategorical, numNumerical]
+    })
 
 
 def analyseFeatureDistributions(data:pd.DataFrame, topFeatures):
+    results = []
 
     for feature in topFeatures:
         # determine the number of bins, 
@@ -55,9 +55,13 @@ def analyseFeatureDistributions(data:pd.DataFrame, topFeatures):
         skewness = skew(data[feature].dropna())
         kurt = kurtosis(data[feature].dropna())
 
-        print("Feature: " + feature)
-        print("Skewness: " + str(skewness))
-        print("Kurtosis: " + str(kurt))
+        results.append({
+            'Feature': feature,
+            'Skewness': skewness,
+            'Kurtosis': kurt
+        })
+
+    return pd.DataFrame(results)
 
 
 def analyseMissingValues(data:pd.DataFrame):
@@ -72,94 +76,81 @@ def analyseMissingValues(data:pd.DataFrame):
     })
 
     sorted = missing_sum.sort_values(by="Percentage", ascending=False)
-    print(sorted)
+    return sorted
 
 
-def hierarchicalClustering(data:pd.DataFrame):
-    data = data.drop(['SalePrice'])
-    cleaned_data = data.select_dtypes(include=['float64'])
+def hierarchicalClustering(data: pd.DataFrame, top_features: list):
+    numeric_data = data[top_features]
+    numeric_data = numeric_data.fillna(numeric_data.mean())
+    numeric_data = numeric_data.replace([np.inf, -np.inf], np.nan).fillna(numeric_data.mean())
+    
+    # Normalize the data
+    numeric_data = (numeric_data - numeric_data.mean()) / numeric_data.std()
 
-    linkMatrix = linkage(cleaned_data)
-
-    plt.figure(figsize=(10, 6))
-    d = dendrogram(linkMatrix)
-    plt.title("fghfh")
-    plt.show()
-
-
-def make_graphs(data):
-    # Set up the matplotlib figure for larger visualizations
-    plt.figure(figsize=(10, 6))
-
-    # Distribution of Sale Prices
-    sns.histplot(data['SalePrice'], kde=True)
-    plt.title('Distribution of House Sale Prices')
-    plt.xlabel('Sale Price ($)')
-    plt.ylabel('Frequency')
-    plt.grid(True)
-    #plt.show()
-    plt.savefig(fileName("histogram"))
-
-    # Correlation Matrix Heatmap
+    # Aggregate data by neighborhood
+    aggregated_data = numeric_data.groupby(data['Neighborhood']).mean()
+    
+    # Check unique neighborhoods
+    unique_neighborhoods = data['Neighborhood'].unique()
+    print("Unique Neighborhoods: " + str(unique_neighborhoods.size))
+    
+    # Perform hierarchical clustering using Ward's method
+    Z = linkage(aggregated_data, method='ward')
+    
+    # Plot the dendrogram with neighborhood labels
     plt.figure(figsize=(15, 10))
-    numeric_data = data.select_dtypes(include=[float,int])
-    corr_matrix = numeric_data.corr()
-    sns.heatmap(corr_matrix, annot=False, cmap='coolwarm', linewidths=0.5)
-    plt.title('Correlation Matrix of All Features')
-    #plt.show()
-    plt.savefig(fileName("correlation_matrix"))
-
-    # Scatter plot of GrLivArea vs. SalePrice
-    plt.figure(figsize=(10, 6))
-    sns.scatterplot(x='GrLivArea', y='SalePrice', data=data)
-    plt.title('Above Grade (Ground) Living Area vs. Sale Price')
-    plt.xlabel('Above Grade Living Area (Square Feet)')
-    plt.ylabel('Sale Price ($)')
-    plt.grid(True)
-    #plt.show()
-    plt.savefig(fileName("scatter_plot"))
-
-    # Box plot of Neighborhood vs. SalePrice
-    plt.figure(figsize=(15, 10))
-    sns.boxplot(x='Neighborhood', y='SalePrice', data=data)
-    plt.title('Neighborhood vs. Sale Price')
+    dendrogram(Z, labels=aggregated_data.index, leaf_rotation=90, leaf_font_size=10)
+    plt.title('Dendrogram of House Prices by Neighborhood')
     plt.xlabel('Neighborhood')
-    plt.ylabel('Sale Price ($)')
-    plt.xticks(rotation=90)
+    plt.ylabel('Distance')
     plt.grid(True)
-    #plt.show()
-    plt.savefig(fileName("box_plot"))
+    plt.savefig(fileName("dendrogram"))
 
-    # Year Built vs. SalePrice
-    plt.figure(figsize=(10, 6))
-    sns.lineplot(x='YearBuilt', y='SalePrice', data=data)
-    plt.title('Year Built vs. Sale Price')
-    plt.xlabel('Year Built')
-    plt.ylabel('Sale Price ($)')
-    plt.grid(True)
-    #plt.show()
-    plt.savefig(fileName("line_plot"))
+def findTopCorrelations(data: pd.DataFrame, target: str, n: int):
+    # Select numerical features
+    numerical_features = data.select_dtypes(include=['float64', 'int64'])
+    
+    # Calculate Pearson correlation with the target variable
+    correlation_matrix = numerical_features.corr()
+    correlations = correlation_matrix[target].drop(labels=[target])
+    
+    # Get the top N features with the highest correlation
+    top_features = correlations.abs().sort_values(ascending=False).head(n)
+    
+    # Create a DataFrame to display the results
+    top_features_df = pd.DataFrame(top_features).reset_index()
+    top_features_df.columns = ['Feature', 'Correlation with ' + target]
+    
+    return top_features_df
 
-    print("Saved graphs to " + fileName("x"))
 
+def printResultsForQuestion(results, question):
+    print("Results for Question " + question)
+    print(results)
+    print("")
+    print("")
 
 
 if __name__ == "__main__":
     data = pd.read_csv(HOUSE_PRICE_PATH)
 
-    # These are from orange
-    top5NumericalFeatures = ["OverallQual","GrLivArea",
-                             "GarageCars","GarageArea",
-                             "TotalBsmtSF","SalePrice"] # saleperice in here jus for comparison
+    # Question 1a
+    stats = summaryStats(data)
+    printResultsForQuestion(stats, "1a")
     
+    # Question 1b
+    topFeatures =  findTopCorrelations(data, "SalePrice", 5)
+    printResultsForQuestion(topFeatures, "1b")
+    top5NumericalFeatures = topFeatures["Feature"].tolist()
+
     # Question 1c
-    analyseFeatureDistributions(data, top5NumericalFeatures)
+    featureDistrib = analyseFeatureDistributions(data, top5NumericalFeatures)
+    printResultsForQuestion(featureDistrib, "1c")
     
     # Question 1d
-    analyseMissingValues(data)
+    missingValues = analyseMissingValues(data)
+    printResultsForQuestion(missingValues, "1d")
 
     # Question 3
-    hierarchicalClustering(data)
-    
-    #make_graphs(data)
-    printInfo(data)
+    hierarchicalClustering(data, top5NumericalFeatures)
+
